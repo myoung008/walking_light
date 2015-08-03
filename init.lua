@@ -47,7 +47,11 @@ end)
 minetest.register_globalstep(function(dtime)
 	for i,player_name in ipairs(players) do
 		local player = minetest.env:get_player_by_name(player_name)
-		local wielded_item = player:get_wielded_item():get_name()
+		local wielded_item = ""
+		if player ~= nil then
+			player:get_wielded_item():get_name()
+		else
+			table.remove(players, i)
 		if wielded_item == "default:torch" or wielded_item == "walking_light:pick_mese" then
 			-- Fackel ist in der Hand
 			local pos = player:getpos()
