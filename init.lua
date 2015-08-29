@@ -8,10 +8,7 @@ minetest.register_on_joinplayer(function(player)
 	local pos = player:getpos()
 	pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
 	local wielded_item = player:get_wielded_item():get_name()
-	if wielded_item ~= "default:torch" and wielded_item ~= "walking_light:pick_mese" then
-		minetest.env:add_node(pos,{type="node",name="air"})
-		last_wielded[player_name] = true
-	end
+	last_wielded[player_name] =  wielded_item ~= "default:torch" and wielded_item ~= "walking_light:pick_mese"
 	player_positions[player_name] = pos;
 end)
 
@@ -22,10 +19,12 @@ minetest.register_on_leaveplayer(function(player)
 			table.remove(players, i)
 		end
 	end
+	if 	last_wielded[player_name] then
+		local pos = player:getpos()
+		pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
+		minetest.env:add_node(pos,{type="node",name="air"})
+	end
 	last_wielded[player_name] = false
-	local pos = player:getpos()
-	pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-	minetest.env:add_node(pos,{type="node",name="air"})
 	player_positions[player_name]=nil
 end)
 
