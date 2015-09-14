@@ -18,29 +18,23 @@ end)
 
 --wielding_light returns 0 for no light; 1 for regular light.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
 function wielding_light(pinfo)
-	local item = pinfo.mt_player:get_wielded_item():get_name()
-	if item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
-		return 1
-	else
-		
-		local inv = pinfo.mt_player:get_inventory()
-		local hotbar=inv:get_list("main")
-		for index=1,8,1 do
-			item = hotbar[index]:get_name()
-			if item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
-				return 1
-			end
+	local inv = pinfo.mt_player:get_inventory()
+	local hotbar=inv:get_list("main")
+	for i=1,8 do
+		local item = hotbar[i]:get_name()
+		if item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
+			return 1
 		end
-
-		local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
-		if armor then
-			local stack = ItemStack("walking_light:helmet_diamond")
-			if armor:contains_item("armor", stack) then
-				return 1
-			end
-		end
-		return 0
 	end
+
+	local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
+	if armor then
+		local stack = ItemStack("walking_light:helmet_diamond")
+		if armor:contains_item("armor", stack) then
+			return 1
+		end
+	end
+	return 0
 end
 
 function update_light_player(pinfo)
