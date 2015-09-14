@@ -1,68 +1,103 @@
 local players = {}
-local player_positions = {}
-local last_wielded = {}
 
-minetest.register_on_joinplayer(function(player)
-	local player_name = player:get_player_name()
-	table.insert(players, player_name)
-	local pos = player:getpos()
-	pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-	local wielded_item = player:get_wielded_item():get_name()
-	last_wielded[player_name] =  wielded_item ~= "default:torch" and wielded_item ~= "walking_light:pick_mese"
-	player_positions[player_name] = pos;
+minetest.register_on_joinplayer(function(mt_player)
+	local name = mt_player:get_player_name()
+	players[name] = {name=name,pos={x=0,y=32000,z=0},wielding=0,mt_player=mt_player}
 end)
 
-minetest.register_on_leaveplayer(function(player)
-	local player_name = player:get_player_name()
-	for i,v in ipairs(players) do
-		if v == player_name then 
-			table.remove(players, i)
-		end
+minetest.register_on_leaveplayer(function(mt_player)
+	local name = mt_player:get_player_name()
+	local pinfo=players[name]
+	if pinfo.wielding > 0 then
+		pinfo.wielding = 0
+		pinfo.light_changed = true
+		update_light_player(pinfo)
 	end
-	if 	last_wielded[player_name] then
-		local pos = player:getpos()
-		pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-		minetest.env:add_node(pos,{type="node",name="air"})
-	end
-	last_wielded[player_name] = false
-	player_positions[player_name]=nil
+	players[name] = nil
 end)
 
-minetest.register_globalstep(function(dtime)
-	for i,player_name in ipairs(players) do
-		local player = minetest.env:get_player_by_name(player_name)
-		local wielded = false
-		local pos
-		local old_pos = player_positions[player_name]
-		local pos_changed = false
-		if player ~= nil then
-			local wielded_item = player:get_wielded_item():get_name()
-			wielded = wielded_item == "default:torch" or wielded_item == "walking_light:pick_mese"
-			if wielded or last_wielded[player_name] then
-				pos = player:getpos()
-				pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-				player_positions[player_name] = pos
-				pos_changed = (old_pos.x ~= pos.x or old_pos.y ~= pos.y or old_pos.z ~= pos.z)
+--wielding_light returns 0 for no light; 1 for regular light.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
+function wielding_light(pinfo)
+	local item = pinfo.mt_player:get_wielded_item():get_name()
+	if item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
+		return 1
+	else
+		
+		local inv = pinfo.mt_player:get_inventory()
+		local hotbar=inv:get_list("main")
+		for index=1,8,1 do
+			item = hotbar[index]:get_name()
+			if item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
+				return 1
 			end
 		end
-		
-		if wielded then
-			local node = minetest.env:get_node_or_nil(pos)
-			if (node == nil or (node ~= nil and node.name == "air")) then
-				minetest.env:add_node(pos,{type="node",name="walking_light:light"})
+
+		local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
+		if armor then
+			local stack = ItemStack("walking_light:helmet_diamond")
+			if armor:contains_item("armor", stack) then
+				return 1
 			end
 		end
-		
-		if last_wielded[player_name] and (pos_changed or not wielded) then
-			local node = minetest.env:get_node_or_nil(old_pos)
-			if node ~= nil and node.name == "walking_light:light" then
-				minetest.env:add_node(old_pos,{type="node",name="air"})
-			end
-		end
-		
-		last_wielded[player_name] = wielded
+		return 0
 	end
-end)
+end
+
+function update_light_player(pinfo)
+	local removes = {}
+	local adds = {}
+	if pinfo.wielded > 0 then
+		local pos=pinfo.old_pos
+		local hash = (pos.x%64)*4096 + (pos.y%64)*64 + pos.z%64
+		removes[hash] = pos
+	end
+	
+	if pinfo.wielding > 0 then
+		local pos=pinfo.pos
+		local hash = (pos.x%64)*4096 + (pos.y%64)*64 + pos.z%64
+		removes[hash] = nil
+		adds[hash] = pos
+	end
+	
+	for h,p in pairs(adds) do
+		local node = minetest.env:get_node_or_nil(p)
+		if node == nil or (node ~= nil and node.name == "air") then
+			minetest.env:add_node(p, {type="node",name="walking_light:light"})
+		end
+	end
+
+	for h,p in pairs(removes) do
+		local node = minetest.env:get_node_or_nil(p)
+		if node ~= nil and node.name == "walking_light:light" then
+			minetest.env:add_node(p, {type="node",name="air"})
+		end
+	end
+end
+
+function update_light_all(dtime)
+	for name,pinfo in pairs(players) do
+		local pos = pinfo.mt_player:getpos()
+		pinfo.wielded = pinfo.wielding
+		pinfo.wielding = wielding_light(pinfo)
+		pinfo.old_pos = pinfo.pos
+		pinfo.pos = {
+			x=math.floor(pos.x + 0.5),
+			y=math.floor(pos.y + 1.5),
+			z=math.floor(pos.z + 0.5)}
+		pinfo.pos_changed=(
+			pinfo.old_pos.x ~= pinfo.pos.x or
+			pinfo.old_pos.y ~= pinfo.pos.y or
+			pinfo.old_pos.z ~= pinfo.pos.z)
+		pinfo.light_changed=pinfo.pos_changed or (pinfo.wielded ~= pinfo.wielding)
+		players[pinfo.name] = pinfo
+
+		if pinfo.light_changed then
+			update_light_player(pinfo)
+		end
+	end
+end
+
+minetest.register_globalstep(update_light_all)
 
 minetest.register_node("walking_light:light", {
 	drawtype = "glasslike",
@@ -95,10 +130,26 @@ minetest.register_tool("walking_light:pick_mese", {
 	},
 })
 
+minetest.register_tool("walking_light:helmet_diamond", {
+	description = "Diamond Helmet with light",
+	inventory_image = "walking_light_inv_helmet_diamond.png",
+	wield_image = "3d_armor_inv_helmet_diamond.png",
+	groups = {armor_head=15, armor_heal=12, armor_use=100},
+	wear = 0,
+})
+
 minetest.register_craft({
 	output = 'walking_light:pick_mese',
 	recipe = {
 		{'default:torch'},
 		{'default:pick_mese'},
+	}
+})
+
+minetest.register_craft({
+	output = 'walking_light:helmet_diamond',
+	recipe = {
+		{'default:torch'},
+		{'3d_armor:helmet_diamond'},
 	}
 })
