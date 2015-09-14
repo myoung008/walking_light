@@ -3,35 +3,23 @@ local player_positions = {}
 local last_wielded = {}
 local megatorch_map = {}
 
--- we don't need to modify the mapgen params, just a one-shot startup function to calc the megatorch map
-minetest.register_on_mapgen_init (function(params)
-	local pos2
-	local step = -4
-	local unstep = 1/step
-	local radius = 10
-	
-	--do the math for 1/8 of the sphere, then mirror
-	for x = 0 - radius, 0, step do
-		for y = 0 - radius, 0, step do
-			for z = 0 - radius, 0, step do
-				dx = math.floor((x*unstep)+.5)*step
-				dy = math.floor((y*unstep)+.5)*step
-				dz = math.floor((z*unstep)+.5)*step
-				distance = math.sqrt(math.pow(x, 2) + math.pow(y, 2) + math.pow(z, 2))
-				if distance <= radius and can_add_light( pos2 ) then
-					table.insert(megatorch_map, {x= x2, y= y2, z= dz})
-					table.insert(megatorch_map, {x= x2, y= y2, z=-dz})
-					table.insert(megatorch_map, {x= x2, y=-y2, z= dz})
-					table.insert(megatorch_map, {x= x2, y=-y2, z=-dz})
-					table.insert(megatorch_map, {x=-x2, y= y2, z= dz})
-					table.insert(megatorch_map, {x=-x2, y= y2, z=-dz})
-					table.insert(megatorch_map, {x=-x2, y=-y2, z= dz})
-					table.insert(megatorch_map, {x=-x2, y=-y2, z=-dz})
-				end
+--calculate megatorch map once at startup
+local step = 4
+local unstep = 1/step
+local radius = 10
+for x = -radius, radius, step do
+	for y = -radius, radius, step do
+		for z = -radius, radius, step do
+			local dx = math.floor((x*unstep)+.5)*step
+			local dy = math.floor((y*unstep)+.5)*step
+			local dz = math.floor((z*unstep)+.5)*step
+			local distance = math.sqrt(math.pow(x, 2) + math.pow(y, 2) + math.pow(z, 2))
+			if distance <= radius then
+				table.insert(megatorch_map, {x= dx, y= dy, z= dz})
 			end
 		end
 	end
-end)
+end
 
 minetest.register_on_joinplayer(function(player)
 	local player_name = player:get_player_name()
@@ -58,6 +46,7 @@ minetest.register_on_leaveplayer(function(player)
 	player_positions[player_name]=nil
 end)
 
+--wielding_light returns 0 for no light; 1 for regular light; 2 for megatorch.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
 function wielding_light(player)
 	local item = player:get_wielded_item():get_name()
 	if item == "walking_light:megatorch" then
@@ -103,36 +92,42 @@ function update_light_all(dtime)
 			end
 		end
 		
-		--calc changes first to avoid removing and replacing light in the same pos
+		--calc removes first, so they can be overriden by adds in the same place
 		local changes = {}
 		if last_wielded[player_name] == 1 and (pos_changed or wielding ~= 1) then
-			changes[old_pos] = 0
+			changes[old_pos] = 0;
 		elseif last_wielded[player_name] == 2 and (pos_changed or wielding ~= 2) then
-			for i in ipairs(megatorch_map) do
-				local pos2={x=pos.x+i.x, y=pos.y+i.y, z=pos.z+i.z}
-				changes[pos2] = 0
+			for i,v in ipairs(megatorch_map) do
+				local pos2={x=old_pos.x+v.x, y=old_pos.y+v.y, z=old_pos.z+v.z}
+				changes[pos2] = 0;
 			end
 		end
 		
 		if wielding == 1 then
-			changes[pos] = 1
+			changes[pos] = 1;
 		elseif wielding == 2 then
-			for i in ipairs(megatorch_map) do
-				local pos2={x=pos.x+i.x, y=pos.y+i.y, z=pos.z+i.z}
-				changes[pos2] = 1
+			for i,v in ipairs(megatorch_map) do
+				local pos2={x=pos.x+v.x, y=pos.y+v.y, z=pos.z+v.z}
+				changes[pos2] = 1;
 			end
 		end
 		
-		-- Now we make the changes.  If lua sorts tables by their index this will cause flicker, if by chronological time there's no problem.
-		for i,v in ipairs(changes) do
-			local node = minetest.env:get_node_or_nil(i)
-			if v == 1 and node.name == "air" then
-				minetest.env:add_node(old_pos,{type="node",name="walking_light:light"})
-			elseif v == 0 and node.name == "walking_light:light" then
-				minetest.env:add_node(old_pos,{type="node",name="air"})
+		--add new light first to reduce flicker
+		for p,l in pairs(changes) do
+			local node = minetest.env:get_node_or_nil(p)
+			if l == 1 and (node == nil or (node ~= nil and node.name == "air")) then
+				minetest.env:add_node(p, {type="node",name="walking_light:light"})
 			end
-			last_wielded[player_name] = wielding
 		end
+		--remove old light
+		for p,l in pairs(changes) do
+			local node = minetest.env:get_node_or_nil(p)
+			if l == 0 and node ~= nil and node.name == "walking_light:light" then
+				minetest.env:add_node(p, {type="node",name="air"})
+			end
+		end
+
+		last_wielded[player_name] = wielding
 	end
 end
 
