@@ -1,61 +1,51 @@
 local players = {}
-local player_positions = {}
-local last_wielded = {}
-local megatorch_map = {}
+local lightmap = {}
+lightmap[1] = {}
+table.insert(lightmap[1], {x=0, y=0, z=0})
+lightmap[2] = {}
 
 --calculate megatorch map once at startup
 local step = 4
-local unstep = 1/step
 local radius = 10
+
+local unstep = 1/step
+local radiussq = math.pow(radius, 10)
 for x = -radius, radius, step do
 	for y = -radius, radius, step do
 		for z = -radius, radius, step do
-			local dx = math.floor((x*unstep)+.5)*step
-			local dy = math.floor((y*unstep)+.5)*step
-			local dz = math.floor((z*unstep)+.5)*step
-			local distance = math.sqrt(math.pow(x, 2) + math.pow(y, 2) + math.pow(z, 2))
-			if distance <= radius then
-				table.insert(megatorch_map, {x= dx, y= dy, z= dz})
+			if math.pow(x, 2) + math.pow(y, 2) + math.pow(z, 2) <= radiussq then
+				table.insert(lightmap[2], {x=x, y=y, z=z})
 			end
 		end
 	end
 end
 
-minetest.register_on_joinplayer(function(player)
-	local player_name = player:get_player_name()
-	table.insert(players, player_name)
-	local pos = player:getpos()
-	pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-	last_wielded[player_name] =  wielding_light(player)
-	player_positions[player_name] = pos;
+minetest.register_on_joinplayer(function(mt_player)
+	local name = mt_player:get_player_name()
+	players[name] = {name=name,pos={x=0,y=32000,z=0},wielding=0,mt_player=mt_player}
 end)
 
-minetest.register_on_leaveplayer(function(player)
-	local player_name = player:get_player_name()
-	for i,v in ipairs(players) do
-		if v == player_name then 
-			table.remove(players, i)
-		end
+minetest.register_on_leaveplayer(function(mt_player)
+	local name = mt_player:get_player_name()
+	local pinfo=players[name]
+	if pinfo.wielding > 0 then
+		pinfo.wielding = 0
+		pinfo.light_changed = true
+		update_light_player(pinfo)
 	end
-	if 	last_wielded[player_name] then
-		local pos = player:getpos()
-		pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-		minetest.env:add_node(pos,{type="node",name="air"})
-	end
-	last_wielded[player_name] = 0
-	player_positions[player_name]=nil
+	players[name] = nil
 end)
 
 --wielding_light returns 0 for no light; 1 for regular light; 2 for megatorch.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
-function wielding_light(player)
-	local item = player:get_wielded_item():get_name()
+function wielding_light(pinfo)
+	local item = pinfo.mt_player:get_wielded_item():get_name()
 	if item == "walking_light:megatorch" then
 		return 2
 	elseif item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
 		return 1
 	else
 		
-		local inv = player:get_inventory()
+		local inv = pinfo.mt_player:get_inventory()
 		local hotbar=inv:get_list("main")
 		for index=1,8,1 do
 			item = hotbar[index]:get_name()
@@ -64,7 +54,7 @@ function wielding_light(player)
 			end
 		end
 
-		local armor = minetest.get_inventory({type="detached", name = player:get_player_name() .. "_armor"})
+		local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
 		if armor then
 			local stack = ItemStack("walking_light:helmet_diamond")
 			if armor:contains_item("armor", stack) then
@@ -75,62 +65,78 @@ function wielding_light(player)
 	end
 end
 
-function update_light_all(dtime)
-	for i,player_name in ipairs(players) do
-		local player = minetest.env:get_player_by_name(player_name)
-		local wielding = 0
-		local pos
-		local old_pos = player_positions[player_name]
-		local pos_changed = false
-		if player ~= nil then
-			wielding = wielding_light(player)
-			if wielding > 0 or last_wielded[player_name] then
-				pos = player:getpos()
-				pos = {x=math.floor(pos.x + 0.5),y=math.floor(pos.y + 1.5),z=math.floor(pos.z + 0.5)}
-				player_positions[player_name] = pos
-				pos_changed = (old_pos.x ~= pos.x or old_pos.y ~= pos.y or old_pos.z ~= pos.z)
-			end
+function update_light_player(pinfo)
+	local removes = {}
+	local adds = {}
+	if pinfo.wielded > 0 then
+		for i,v in ipairs(lightmap[pinfo.wielded]) do
+			local pos={
+				x = pinfo.old_pos.x + v.x,
+				y = pinfo.old_pos.y + v.y,
+				z = pinfo.old_pos.z + v.z}
+			local hash = (pos.x%64)*4096 + (pos.y%64)*64 + pos.z%64
+			removes[hash] = pos;
 		end
-		
-		--calc removes first, so they can be overriden by adds in the same place
-		local changes = {}
-		if last_wielded[player_name] == 1 and (pos_changed or wielding ~= 1) then
-			changes[old_pos] = 0;
-		elseif last_wielded[player_name] == 2 and (pos_changed or wielding ~= 2) then
-			for i,v in ipairs(megatorch_map) do
-				local pos2={x=old_pos.x+v.x, y=old_pos.y+v.y, z=old_pos.z+v.z}
-				changes[pos2] = 0;
-			end
+	end
+	
+	if pinfo.wielding > 0 then
+		for i,v in ipairs(lightmap[pinfo.wielding]) do
+			local pos={
+				x= pinfo.pos.x + v.x,
+				y= pinfo.pos.y + v.y,
+				z= pinfo.pos.z + v.z}
+			local hash = (pos.x%64)*4096 + (pos.y%64)*64 + pos.z%64
+			removes[hash] = nil
+			adds[hash] = pos
 		end
-		
-		if wielding == 1 then
-			changes[pos] = 1;
-		elseif wielding == 2 then
-			for i,v in ipairs(megatorch_map) do
-				local pos2={x=pos.x+v.x, y=pos.y+v.y, z=pos.z+v.z}
-				changes[pos2] = 1;
-			end
+	end
+	
+	for h,p in pairs(adds) do
+		local node = minetest.env:get_node_or_nil(p)
+		if node == nil or (node ~= nil and node.name == "air") then
+			minetest.env:add_node(p, {type="node",name="walking_light:light"})
 		end
-		
-		--add new light first to reduce flicker
-		for p,l in pairs(changes) do
-			local node = minetest.env:get_node_or_nil(p)
-			if l == 1 and (node == nil or (node ~= nil and node.name == "air")) then
-				minetest.env:add_node(p, {type="node",name="walking_light:light"})
-			end
-		end
-		--remove old light
-		for p,l in pairs(changes) do
-			local node = minetest.env:get_node_or_nil(p)
-			if l == 0 and node ~= nil and node.name == "walking_light:light" then
-				minetest.env:add_node(p, {type="node",name="air"})
-			end
-		end
+	end
 
-		last_wielded[player_name] = wielding
+	for h,p in pairs(removes) do
+		local node = minetest.env:get_node_or_nil(p)
+		if node ~= nil and node.name == "walking_light:light" then
+			minetest.env:add_node(p, {type="node",name="air"})
+		end
 	end
 end
 
+function update_light_all(dtime)
+	for name,pinfo in pairs(players) do
+		local pos = pinfo.mt_player:getpos()
+		pinfo.wielded = pinfo.wielding
+		pinfo.wielding = wielding_light(pinfo)
+		pinfo.old_pos = pinfo.pos
+		pinfo.pos = {
+			x=math.floor(pos.x + 0.5),
+			y=math.floor(pos.y + 1.5),
+			z=math.floor(pos.z + 0.5)
+		}
+		--if we're wielding a megatorch it doesn't really matter where we're actually at, just the closest grid point
+		if pinfo.wielding == 2 then
+			pinfo.pos = {
+				x=math.floor(pinfo.pos.x*unstep+.5)*step,
+				y=math.floor(pinfo.pos.y*unstep+.5)*step,
+				z=math.floor(pinfo.pos.z*unstep+.5)*step
+			}
+		end
+		pinfo.pos_changed=(
+			pinfo.old_pos.x ~= pinfo.pos.x or
+			pinfo.old_pos.y ~= pinfo.pos.y or
+			pinfo.old_pos.z ~= pinfo.pos.z)
+		pinfo.light_changed=pinfo.pos_changed or (pinfo.wielded ~= pinfo.wielding)
+		players[pinfo.name] = pinfo
+
+		if pinfo.light_changed then
+			update_light_player(pinfo)
+		end
+	end
+end
 
 minetest.register_globalstep(update_light_all)
 
