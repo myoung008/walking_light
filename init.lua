@@ -19,14 +19,16 @@ end)
 --wielding_light returns 0 for no light; 1 for regular light.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
 function wielding_light(pinfo)
 	local inv = pinfo.mt_player:get_inventory()
-	local hotbar=inv:get_list("main")
-	for i=1,8 do
-		local item = hotbar[i]:get_name()
-		if item == "default:torch" or item == "walking_light:pick_mese" then
-			return 1
-		end
-	end
-
+  if inv ~= nil then
+    local hotbar=inv:get_list("main")
+    for i=1,8 do
+      local item = hotbar[i]:get_name()
+      if item == "default:torch" or item == "walking_light:pick_mese" then
+        return 1
+      end
+    end
+  end
+  
 	local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
 	if armor then
 		local stack = ItemStack("walking_light:helmet_diamond")
