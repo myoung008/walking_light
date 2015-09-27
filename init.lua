@@ -22,7 +22,7 @@ function wielding_light(pinfo)
 	local hotbar=inv:get_list("main")
 	for i=1,8 do
 		local item = hotbar[i]:get_name()
-		if item == "default:torch" or item == "walking_light:pick_mese" or item == "walking_light:helmet_diamond" then
+		if item == "default:torch" or item == "walking_light:pick_mese" then
 			return 1
 		end
 	end
