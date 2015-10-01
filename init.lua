@@ -10,7 +10,6 @@ minetest.register_on_leaveplayer(function(mt_player)
 	local pinfo=players[name]
 	if pinfo.wielding > 0 then
 		pinfo.wielding = 0
-		pinfo.light_changed = true
 		update_light_player(pinfo)
 	end
 	players[name] = nil
@@ -19,15 +18,15 @@ end)
 --wielding_light returns 0 for no light; 1 for regular light.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
 function wielding_light(pinfo)
 	local inv = pinfo.mt_player:get_inventory()
-  if inv ~= nil then
-    local hotbar=inv:get_list("main")
-    for i=1,8 do
-      local item = hotbar[i]:get_name()
-      if item == "default:torch" or item == "walking_light:pick_mese" then
-        return 1
-      end
-    end
-  end
+	if inv ~= nil then
+		local hotbar=inv:get_list("main")
+		for i=1,8 do
+			local item = hotbar[i]:get_name()
+			if item == "default:torch" or item == "walking_light:pick_mese" then
+				return 1
+			end
+		end
+	end
   
 	local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
 	if armor then
@@ -84,10 +83,9 @@ function update_light_all(dtime)
 			pinfo.old_pos.x ~= pinfo.pos.x or
 			pinfo.old_pos.y ~= pinfo.pos.y or
 			pinfo.old_pos.z ~= pinfo.pos.z)
-		pinfo.light_changed=pinfo.pos_changed or (pinfo.wielded ~= pinfo.wielding)
 		players[pinfo.name] = pinfo
 
-		if pinfo.light_changed then
+		if pinfo.pos_changed or (pinfo.wielded ~= pinfo.wielding) then
 			update_light_player(pinfo)
 		end
 	end
@@ -105,7 +103,7 @@ minetest.register_node("walking_light:light", {
 	is_ground_content = true,
 	light_propagates = true,
 	sunlight_propagates = true,
-	light_source = 13,
+	light_source = 14,
 	selection_box = {
 		type = "fixed",
 		fixed = {0, 0, 0, 0, 0, 0},
