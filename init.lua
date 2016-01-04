@@ -1,3 +1,5 @@
+local wielding_only = false
+
 local players = {}
 
 minetest.register_on_joinplayer(function(mt_player)
@@ -17,22 +19,29 @@ end)
 
 --wielding_light returns 0 for no light; 1 for regular light.  Outside of this function we don't care what's being wielded, carried or worn, just what needs to be done.
 function wielding_light(pinfo)
-	local inv = pinfo.mt_player:get_inventory()
-	if inv ~= nil then
-		local hotbar=inv:get_list("main")
-		for i=1,8 do
-			local item = hotbar[i]:get_name()
-			if item == "default:torch" or item == "walking_light:pick_mese" then
-				return 1
+	if (wielding_only) then
+		local wielded_item = pinfo.mt_player:get_wielded_item():get_name()
+		if ((wielded_item == "default:torch") or (wielded_item == "walking_light:pick_mese")) then
+			return 1
+		end
+	else 
+		local inv = pinfo.mt_player:get_inventory()
+		if inv ~= nil then
+			local hotbar=inv:get_list("main")
+			for i=1,8 do
+				local item = hotbar[i]:get_name()
+				if item == "default:torch" or item == "walking_light:pick_mese" then
+					return 1
+				end
 			end
 		end
-	end
-  
-	local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
-	if armor then
-		local stack = ItemStack("walking_light:helmet_diamond")
-		if armor:contains_item("armor", stack) then
-			return 1
+
+		local armor = minetest.get_inventory({type="detached", name = pinfo.name .. "_armor"})
+		if armor then
+			local stack = ItemStack("walking_light:helmet_diamond")
+			if armor:contains_item("armor", stack) then
+				return 1
+			end
 		end
 	end
 	return 0
@@ -74,15 +83,17 @@ function update_light_all(dtime)
 		local pos = pinfo.mt_player:getpos()
 		pinfo.wielded = pinfo.wielding
 		pinfo.wielding = wielding_light(pinfo)
-		pinfo.old_pos = pinfo.pos
-		pinfo.pos = {
-			x=math.floor(pos.x + 0.5),
-			y=math.floor(pos.y + 1.5),
-			z=math.floor(pos.z + 0.5)}
-		pinfo.pos_changed=(
-			pinfo.old_pos.x ~= pinfo.pos.x or
-			pinfo.old_pos.y ~= pinfo.pos.y or
-			pinfo.old_pos.z ~= pinfo.pos.z)
+		if pos ~= nil then
+			pinfo.old_pos = pinfo.pos
+			pinfo.pos = {
+				x=math.floor(pos.x + 0.5),
+				y=math.floor(pos.y + 1.5),
+				z=math.floor(pos.z + 0.5)}
+			pinfo.pos_changed=(
+				pinfo.old_pos.x ~= pinfo.pos.x or
+				pinfo.old_pos.y ~= pinfo.pos.y or
+				pinfo.old_pos.z ~= pinfo.pos.z)
+		end
 		players[pinfo.name] = pinfo
 
 		if pinfo.pos_changed or (pinfo.wielded ~= pinfo.wielding) then
@@ -96,7 +107,6 @@ minetest.register_globalstep(update_light_all)
 minetest.register_node("walking_light:light", {
 	drawtype = "glasslike",
 	tile_images = {"walking_light.png"},
-	-- tile_images = {"walking_light_debug.png"},
 	inventory_image = minetest.inventorycube("walking_light.png"),
 	paramtype = "light",
 	walkable = false,
