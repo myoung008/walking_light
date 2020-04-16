@@ -1,4 +1,4 @@
-local wielding_only = false
+local wielding_only = minetest.settings:get_bool("walking_light.wielding_only", false)
 
 local players = {}
 
@@ -64,23 +64,23 @@ function update_light_player(pinfo)
 	end
 	
 	for h,p in pairs(adds) do
-		local node = minetest.env:get_node_or_nil(p)
+		local node = minetest.get_node_or_nil(p)
 		if node == nil or (node ~= nil and node.name == "air") then
-			minetest.env:add_node(p, {type="node",name="walking_light:light"})
+			minetest.add_node(p, {type="node",name="walking_light:light"})
 		end
 	end
 
 	for h,p in pairs(removes) do
-		local node = minetest.env:get_node_or_nil(p)
+		local node = minetest.get_node_or_nil(p)
 		if node ~= nil and node.name == "walking_light:light" then
-			minetest.env:add_node(p, {type="node",name="air"})
+			minetest.add_node(p, {type="node",name="air"})
 		end
 	end
 end
 
 function update_light_all(dtime)
 	for name,pinfo in pairs(players) do
-		local pos = pinfo.mt_player:getpos()
+		local pos = pinfo.mt_player:get_pos()
 		pinfo.wielded = pinfo.wielding
 		pinfo.wielding = wielding_light(pinfo)
 		if pos ~= nil then
