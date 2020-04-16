@@ -1,4 +1,4 @@
-local wielding_only = false
+local wielding_only = minetest.settings:get_bool("walking_light.wielding_only", false)
 
 local players = {}
 
