@@ -109,6 +109,7 @@ minetest.register_node("walking_light:light", {
 	tile_images = {"walking_light.png"},
 	inventory_image = minetest.inventorycube("walking_light.png"),
 	paramtype = "light",
+	drawtype = "airlike",
 	walkable = false,
 	is_ground_content = true,
 	light_propagates = true,
